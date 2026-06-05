@@ -1,0 +1,4 @@
+# XAI_API_KEY – Required secret
+# Set via: wrangler secret put XAI_API_KEY
+# Or for local dev, create .dev.vars:
+#   XAI_API_KEY=your_key_here

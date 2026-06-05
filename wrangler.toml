@@ -1,0 +1,19 @@
+#:schema https://developers.cloudflare.com/workers/platform/wrangler-configuration
+name = "xai-search-mcp"
+main = "src/index.ts"
+compatibility_date = "2026-06-06"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects binding – required by McpAgent
+[[durable_objects.bindings]]
+name = "XAI_SEARCH_MCP"
+class_name = "XaiSearchMCP"
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["XaiSearchMCP"]
+
+# Secret – set via `wrangler secret put XAI_API_KEY`
+# [vars]
+# (none – secrets are injected at runtime)
