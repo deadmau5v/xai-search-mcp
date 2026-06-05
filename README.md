@@ -84,7 +84,7 @@ npx @modelcontextprotocol/inspector@latest
 npm run deploy
 ```
 
-The MCP server will be live at `https://xai-search-mcp.<your-account>.workers.dev/mcp`.
+The MCP server will be live at `https://xai-search.d5v.cc/mcp`.
 
 ## Tool Reference
 
@@ -128,7 +128,7 @@ Deep search x.com posts and articles using xAI Grok.
       "command": "npx",
       "args": [
         "mcp-remote",
-        "https://xai-search-mcp.<your-account>.workers.dev/mcp"
+        "https://xai-search.d5v.cc/mcp"
       ]
     }
   }
@@ -144,7 +144,7 @@ Add to your MCP settings:
   "mcp": {
     "servers": {
       "xai-search": {
-        "url": "https://xai-search-mcp.<your-account>.workers.dev/mcp",
+        "url": "https://xai-search.d5v.cc/mcp",
         "transport": "streamable-http"
       }
     }
