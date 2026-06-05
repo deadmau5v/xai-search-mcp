@@ -3,20 +3,21 @@ name = "xai-search-mcp"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
-
-# Durable Objects binding – required by McpAgent
-[[durable_objects.bindings]]
-name = "XAI_SEARCH_MCP"
-class_name = "XaiSearchMCP"
-
-# Durable Object migrations
-[[migrations]]
-tag = "v1"
-new_classes = ["XaiSearchMCP"]
+workers_dev = true
 
 # Custom domain
 routes = [
   { pattern = "xai-search.d5v.cc", custom_domain = true }
 ]
+
+# Durable Objects binding – required by McpAgent
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "XaiSearchMCP"
+
+# Durable Object migrations – new_sqlite_classes required by McpAgent (Agent base uses SQLite)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["XaiSearchMCP"]
 
 # Secret – set via `wrangler secret put XAI_API_KEY`
