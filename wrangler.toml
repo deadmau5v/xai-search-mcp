@@ -14,6 +14,9 @@ class_name = "XaiSearchMCP"
 tag = "v1"
 new_classes = ["XaiSearchMCP"]
 
+# Custom domain
+routes = [
+  { pattern = "xai-search.d5v.cc", custom_domain = true }
+]
+
 # Secret – set via `wrangler secret put XAI_API_KEY`
-# [vars]
-# (none – secrets are injected at runtime)
