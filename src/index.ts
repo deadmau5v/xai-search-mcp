@@ -3,7 +3,7 @@
  *
  * A Streamable HTTP MCP server built with Cloudflare Agents SDK (McpAgent).
  * Implements the X_Search tool for deep searching x.com posts/articles
- * via xAI's Grok model, authenticated with XAI_API_KEY.
+ * via xAI's Responses API with x_search built-in tool.
  */
 
 import { McpAgent } from "agents/mcp";
@@ -63,7 +63,7 @@ const XSearchInputSchema = {
 export class XaiSearchMCP extends McpAgent<Env, AppState> {
   server = new McpServer({
     name: "xai-search-mcp",
-    version: "1.0.0",
+    version: "2.0.0",
   });
 
   initialState: AppState = {
@@ -73,7 +73,7 @@ export class XaiSearchMCP extends McpAgent<Env, AppState> {
 
   async init() {
     // -----------------------------------------------------------------------
-    // Tool: X_Search – Deep search on x.com via xAI API
+    // Tool: X_Search – Deep search on x.com via xAI Responses API
     // -----------------------------------------------------------------------
     try {
       this.server.tool(
@@ -81,7 +81,7 @@ export class XaiSearchMCP extends McpAgent<Env, AppState> {
         "Deep search x.com posts and articles using xAI Grok. "
           + "Supports filtering by handles, date ranges, and media understanding.",
         XSearchInputSchema,
-        async (params, extra) => {
+        async (params) => {
           const apiKey = this.env.XAI_API_KEY;
 
           if (!apiKey) {
@@ -97,57 +97,36 @@ export class XaiSearchMCP extends McpAgent<Env, AppState> {
             };
           }
 
-          // Build the xAI chat completion request with x_search tool
-          const requestBody: Record<string, unknown> = {
-            model: "grok-3-latest",
-            messages: [
-              {
-                role: "user",
-                content: params.query,
-              },
-            ],
-            search_parameters: {
-              mode: "auto",
-              sources: [{ type: "x" }],  // live_search is the correct tool type for xAI API
-            },
-            tool_choice: "auto",
-          };
-
-          // Build x_search parameters
-          const xSearchParams: Record<string, unknown> = {};
+          // Build x_search tool with optional parameters
+          const xSearchTool: Record<string, unknown> = { type: "x_search" };
           if (params.allowed_x_handles?.length) {
-            xSearchParams.allowed_x_handles = params.allowed_x_handles;
+            xSearchTool.allowed_x_handles = params.allowed_x_handles;
           }
           if (params.excluded_x_handles?.length) {
-            xSearchParams.excluded_x_handles = params.excluded_x_handles;
+            xSearchTool.excluded_x_handles = params.excluded_x_handles;
           }
           if (params.from_date) {
-            xSearchParams.from_date = params.from_date;
+            xSearchTool.from_date = params.from_date;
           }
           if (params.to_date) {
-            xSearchParams.to_date = params.to_date;
+            xSearchTool.to_date = params.to_date;
           }
           if (params.enable_image_understanding) {
-            xSearchParams.enable_image_understanding = true;
+            xSearchTool.enable_image_understanding = true;
           }
           if (params.enable_video_understanding) {
-            xSearchParams.enable_video_understanding = true;
+            xSearchTool.enable_video_understanding = true;
           }
 
-          // Attach live_search as a server-side tool (correct tool type for xAI API)
-          requestBody.tools = [
-            {
-              type: "live_search",
-              search_parameters: {
-                mode: "auto",
-                sources: [{ type: "x" }],
-              },
-              ...(Object.keys(xSearchParams).length > 0 ? xSearchParams : {}),
-            },
-          ];
+          // xAI Responses API request body
+          const requestBody = {
+            model: "grok-4.20-non-reasoning",
+            input: params.query,
+            tools: [xSearchTool],
+          };
 
           try {
-            const response = await fetch("https://api.x.ai/v1/chat/completions", {
+            const response = await fetch("https://api.x.ai/v1/responses", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -170,50 +149,99 @@ export class XaiSearchMCP extends McpAgent<Env, AppState> {
             }
 
             const data = (await response.json()) as {
-              choices?: Array<{
-                message?: { content?: string };
-              }>;
-              citations?: Array<{
-                url?: string;
-                title?: string;
-                snippet?: string;
+              id?: string;
+              model?: string;
+              output?: Array<{
+                type?: string;
+                content?: Array<{
+                  type?: string;
+                  text?: string;
+                  annotations?: Array<{
+                    type?: string;
+                    url?: string;
+                    title?: string;
+                    start_index?: number;
+                    end_index?: number;
+                  }>;
+                }>;
+                name?: string;
+                input?: string;
+                call_id?: string;
+                status?: string;
               }>;
               usage?: {
-                prompt_tokens?: number;
-                completion_tokens?: number;
+                input_tokens?: number;
+                output_tokens?: number;
                 total_tokens?: number;
+                server_side_tool_usage_details?: {
+                  x_search_calls?: number;
+                  web_search_calls?: number;
+                };
               };
-              server_side_tool_usage?: Array<{
-                type: string;
-                num_calls: number;
-              }>;
             };
 
-            // Extract the response content
-            const content =
-              data.choices?.[0]?.message?.content ?? "No results found.";
+            // Extract the message content from the output array
+            let contentText = "";
+            const annotations: Array<{
+              url: string;
+              title: string;
+            }> = [];
 
-            // Format citations if available
-            let citationText = "";
-            if (data.citations?.length) {
-              citationText =
+            for (const item of data.output ?? []) {
+              if (item.type === "message" && item.content) {
+                for (const c of item.content) {
+                  if (c.type === "output_text" && c.text) {
+                    contentText += c.text;
+                  }
+                  // Collect URL citations from annotations
+                  if (c.annotations) {
+                    for (const a of c.annotations) {
+                      if (a.type === "url_citation" && a.url) {
+                        annotations.push({
+                          url: a.url,
+                          title: a.title ?? String(a.start_index ?? ""),
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            if (!contentText) {
+              contentText = "No results found.";
+            }
+
+            // Deduplicate annotations by URL
+            const seenUrls = new Set<string>();
+            const uniqueAnnotations = annotations.filter((a) => {
+              if (seenUrls.has(a.url)) return false;
+              seenUrls.add(a.url);
+              return true;
+            });
+
+            // Format sources from annotations
+            let sourcesText = "";
+            if (uniqueAnnotations.length > 0) {
+              sourcesText =
                 "\n\n## Sources\n"
-                + data.citations
-                  .map(
-                    (c, i) =>
-                      `${i + 1}. ${c.title ?? "Untitled"} – ${c.url ?? "N/A"}${c.snippet ? `\n   > ${c.snippet}` : ""}`,
-                  )
+                + uniqueAnnotations
+                  .map((a, i) => `${i + 1}. ${a.title} – ${a.url}`)
                   .join("\n");
             }
 
             // Format tool usage info
             let toolUsageText = "";
-            if (data.server_side_tool_usage?.length) {
-              toolUsageText =
-                "\n\n## Tool Usage\n"
-                + data.server_side_tool_usage
-                  .map((t) => `- ${t.type}: ${t.num_calls} calls`)
-                  .join("\n");
+            const toolDetails = data.usage?.server_side_tool_usage_details;
+            if (toolDetails && (toolDetails.x_search_calls || toolDetails.web_search_calls)) {
+              const parts: string[] = [];
+              if (toolDetails.x_search_calls) {
+                parts.push(`- x_search: ${toolDetails.x_search_calls} calls`);
+              }
+              if (toolDetails.web_search_calls) {
+                parts.push(`- web_search: ${toolDetails.web_search_calls} calls`);
+              }
+              toolUsageText = "\n\n## Tool Usage\n" + parts.join("\n");
             }
 
             // Persist state
@@ -226,7 +254,7 @@ export class XaiSearchMCP extends McpAgent<Env, AppState> {
               content: [
                 {
                   type: "text" as const,
-                  text: content + citationText + toolUsageText,
+                  text: contentText + sourcesText + toolUsageText,
                 },
               ],
             };
