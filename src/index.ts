@@ -7,8 +7,21 @@
  */
 
 import { McpAgent } from "agents/mcp";
+import type { Connection } from "partyserver";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface Env {
+  XAI_API_KEY: string;
+}
+
+interface AppState {
+  lastQuery: string;
+  totalCalls: number;
+}
 
 // ---------------------------------------------------------------------------
 // X_Search tool input schema
@@ -46,13 +59,13 @@ const XSearchInputSchema = {
 // ---------------------------------------------------------------------------
 // McpAgent – stateful MCP server backed by a Durable Object
 // ---------------------------------------------------------------------------
-export class XaiSearchMCP extends McpAgent {
+export class XaiSearchMCP extends McpAgent<Env, AppState> {
   server = new McpServer({
     name: "xai-search-mcp",
     version: "1.0.0",
   });
 
-  initialState = {
+  initialState: AppState = {
     lastQuery: "",
     totalCalls: 0,
   };
@@ -67,7 +80,7 @@ export class XaiSearchMCP extends McpAgent {
         + "Supports filtering by handles, date ranges, and media understanding.",
       XSearchInputSchema,
       async (params, extra) => {
-        const apiKey = (this.env as Record<string, string>).XAI_API_KEY;
+        const apiKey = this.env.XAI_API_KEY;
 
         if (!apiKey) {
           return {
@@ -199,7 +212,6 @@ export class XaiSearchMCP extends McpAgent {
 
           // Persist state
           this.setState({
-            ...this.state,
             lastQuery: params.query,
             totalCalls: this.state.totalCalls + 1,
           });
@@ -227,7 +239,7 @@ export class XaiSearchMCP extends McpAgent {
     );
   }
 
-  onStateChanged(state: { lastQuery: string; totalCalls: number }) {
+  onStateUpdate(state: AppState | undefined, source: Connection | "server") {
     console.log("[XaiSearchMCP] state updated:", JSON.stringify(state));
   }
 }
